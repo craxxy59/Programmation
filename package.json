@@ -1,0 +1,16 @@
+{
+  "name": "netlify-shared-calendar",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Calendrier partagé de disponibilités pour Netlify",
+  "scripts": {
+    "dev": "netlify dev",
+    "check": "node --check app.js && node --check netlify/functions/create-event.mjs && node --check netlify/functions/event.mjs && node --check netlify/functions/save-availability.mjs && node --check netlify/functions/lib/data.mjs"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^9.0.0"
+  },
+  "devDependencies": {
+    "netlify-cli": "^23.0.0"
+  }
+}
