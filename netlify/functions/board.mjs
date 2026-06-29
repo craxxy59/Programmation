@@ -6,7 +6,9 @@ export default async (req) => {
   }
 
   try {
-    const data = await getSharedBoardWithParticipants();
+    const url = new URL(req.url);
+    const startDate = String(url.searchParams.get("start") || "").trim();
+    const data = await getSharedBoardWithParticipants(startDate || undefined);
     return jsonResponse(data);
   } catch (error) {
     return errorResponse(error);

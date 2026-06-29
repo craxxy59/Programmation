@@ -1,58 +1,37 @@
 # DispoCal
 
-Site de disponibilités partagé, prévu pour être hébergé sur **Netlify**.
+Calendrier partagé de disponibilités pour Netlify.
 
-## Nouveau fonctionnement
+## Fonctionnement
 
-- on arrive directement sur une page qui demande **le nom**
-- après validation, on accède tout de suite au **calendrier partagé**
-- il n’y a **plus de création d’événement**
-- le calendrier affiche les **14 prochains jours**
-- plusieurs personnes peuvent remplir leurs disponibilités sur le même planning
-- vue d’ensemble avec comptage des participants par créneau
+- page d’entrée avec le nom
+- calendrier partagé
+- navigation par périodes de 14 jours avec les flèches
+- enregistrement des disponibilités par personne
 
 ## Stack
 
 - Frontend statique : `index.html`, `styles.css`, `app.js`
-- Backend : **Netlify Functions**
-- Stockage partagé : **Netlify Blobs**
+- Backend : `Netlify Functions`
+- Stockage : `Netlify Blobs`
 
-## API utilisée
+## API
 
-- `GET /.netlify/functions/board` : récupère le calendrier partagé courant + les participants
-- `POST /.netlify/functions/save-availability` : enregistre les disponibilités d’une personne
+- `GET /.netlify/functions/board`
+- `GET /.netlify/functions/board?start=YYYY-MM-DD`
+- `POST /.netlify/functions/save-availability`
 
-## Déploiement sur Netlify
+## Déploiement
 
-1. Mets ces fichiers dans un dépôt GitHub.
-2. Va sur Netlify.
-3. Clique sur **Add new project**.
-4. Importe le dépôt.
-5. Déploie.
+1. pousse le projet sur GitHub
+2. importe le repo dans Netlify
+3. déploie
 
-Le fichier `netlify.toml` indique déjà :
+`netlify.toml` est déjà prêt.
 
-- `publish = "."`
-- `functions = "netlify/functions"`
-
-## Lancement local
+## Local
 
 ```bash
 npm install
 npx netlify dev
 ```
-
-## Notes
-
-- pas de comptes utilisateurs
-- chaque navigateur garde un identifiant local pour éviter que tout le monde écrase la même fiche
-- le planning est un **calendrier partagé unique**
-- la fenêtre affichée est **glissante sur 14 jours**
-
-## Évolutions possibles
-
-- page admin pour régler les horaires et le nombre de jours
-- vue mensuelle
-- export CSV / ICS
-- suppression d’un participant
-- code d’accès privé pour protéger le planning

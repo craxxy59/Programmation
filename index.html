@@ -3,91 +3,74 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DispoCal — disponibilités partagées</title>
-    <meta
-      name="description"
-      content="Calendrier partagé de disponibilités : on saisit son nom puis on remplit directement ses créneaux."
-    />
+    <title>DispoCal</title>
+    <meta name="description" content="Calendrier partagé de disponibilités." />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="shell">
-      <header class="hero">
-        <div>
-          <p class="eyebrow">DispoCal</p>
-          <h1>Vos disponibilités, sans création d’événement</h1>
-          <p class="lead">
-            Chaque personne entre son nom, puis accède directement au calendrier partagé des 14 prochains jours.
-          </p>
-        </div>
+      <header class="hero hero-minimal">
+        <h1>DispoCal</h1>
       </header>
 
       <main class="layout">
         <section id="welcome-section" class="card card-narrow stack">
-          <div class="stack gap-sm">
-            <h2>Entrer dans le calendrier</h2>
-            <p class="muted">
-              Renseigne simplement ton nom pour accéder au planning partagé.
-            </p>
-          </div>
-
           <form id="welcome-form" class="stack">
             <label>
-              <span>Ton nom</span>
+              <span>Nom</span>
               <input
                 id="welcome-name"
                 name="name"
                 maxlength="60"
                 required
-                placeholder="Ex. Camille"
+                placeholder="Camille"
                 autocomplete="name"
               />
             </label>
 
-            <button type="submit" class="primary-button">Accéder au calendrier</button>
+            <button type="submit" class="primary-button">Continuer</button>
           </form>
         </section>
 
         <section id="calendar-section" class="card stack hidden">
           <div class="section-title-row">
-            <div>
-              <p class="eyebrow">Calendrier partagé</p>
+            <div class="range-nav">
+              <button id="prev-range" type="button" class="ghost-button nav-button" aria-label="Période précédente">←</button>
               <h2 id="board-title">Chargement…</h2>
+              <button id="next-range" type="button" class="ghost-button nav-button" aria-label="Période suivante">→</button>
             </div>
             <div class="toolbar toolbar-end">
               <span id="current-name-badge" class="badge"></span>
-              <button id="change-name" type="button" class="ghost-button">Changer de nom</button>
+              <button id="change-name" type="button" class="ghost-button">Nom</button>
             </div>
           </div>
-
-          <p id="board-description" class="muted"></p>
 
           <div class="event-meta" id="board-meta"></div>
 
           <div class="split">
             <section class="subcard stack">
               <div class="section-title-row">
-                <h3>Mes disponibilités</h3>
+                <h3>Mes dispos</h3>
                 <div class="toolbar">
-                  <button id="select-all" type="button" class="ghost-button">Tout cocher</button>
-                  <button id="clear-all" type="button" class="ghost-button">Tout décocher</button>
+                  <button id="select-all" type="button" class="ghost-button">Tout</button>
+                  <button id="clear-all" type="button" class="ghost-button">Rien</button>
                 </div>
               </div>
 
               <form id="availability-form" class="stack">
                 <div id="editor-summary" class="muted small"></div>
                 <div id="editor-grid" class="calendar-grid-wrapper"></div>
-                <button type="submit" class="primary-button">Enregistrer mes disponibilités</button>
+                <button type="submit" class="primary-button">Enregistrer</button>
               </form>
             </section>
 
             <section class="subcard stack">
-              <h3>Vue d’ensemble</h3>
+              <h3>Vue</h3>
               <div id="aggregate-summary" class="muted small"></div>
               <div id="aggregate-grid" class="calendar-grid-wrapper"></div>
               <div>
                 <h4>Participants</h4>
-                <div id="participants-list" class="stack compact-list empty-state">Aucun participant pour le moment.</div>
+                <div id="participants-list" class="stack compact-list empty-state">Aucun</div>
               </div>
             </section>
           </div>

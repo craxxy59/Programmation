@@ -4,6 +4,7 @@ const state = {
   draftSlots: new Set(),
   currentParticipantToken: null,
   currentName: "",
+  currentStartDate: null,
 };
 
 const NAME_KEY = "dispocal:shared-name";
@@ -15,10 +16,11 @@ const dom = {
   welcomeName: document.querySelector("#welcome-name"),
   calendarSection: document.querySelector("#calendar-section"),
   boardTitle: document.querySelector("#board-title"),
-  boardDescription: document.querySelector("#board-description"),
   boardMeta: document.querySelector("#board-meta"),
   currentNameBadge: document.querySelector("#current-name-badge"),
   changeName: document.querySelector("#change-name"),
+  prevRange: document.querySelector("#prev-range"),
+  nextRange: document.querySelector("#next-range"),
   availabilityForm: document.querySelector("#availability-form"),
   editorSummary: document.querySelector("#editor-summary"),
   editorGrid: document.querySelector("#editor-grid"),
@@ -44,6 +46,8 @@ function bindEvents() {
   dom.selectAll.addEventListener("click", selectAllSlots);
   dom.clearAll.addEventListener("click", clearAllSlots);
   dom.changeName.addEventListener("click", switchUser);
+  dom.prevRange.addEventListener("click", () => moveRange(-1));
+  dom.nextRange.addEventListener("click", () => moveRange(1));
 }
 
 async function handleWelcomeSubmit(event) {
@@ -51,7 +55,7 @@ async function handleWelcomeSubmit(event) {
 
   const name = dom.welcomeName.value.trim();
   if (!name) {
-    showToast("Entre ton nom pour continuer.");
+    showToast("Entre ton nom.");
     dom.welcomeName.focus();
     return;
   }
@@ -70,10 +74,12 @@ async function handleWelcomeSubmit(event) {
   }
 }
 
-async function loadBoard(options = {}) {
-  const data = await api("/.netlify/functions/board");
+async function loadBoard(startDate = state.currentStartDate, options = {}) {
+  const query = startDate ? `?start=${encodeURIComponent(startDate)}` : "";
+  const data = await api(`/.netlify/functions/board${query}`);
 
   state.currentBoard = data.board;
+  state.currentStartDate = data.board.startDate;
   state.participants = Array.isArray(data.participants) ? data.participants : [];
   state.currentParticipantToken = getOrCreateParticipantToken(data.board.id, false);
 
@@ -81,7 +87,12 @@ async function loadBoard(options = {}) {
     (participant) => participant.participantToken === state.currentParticipantToken,
   );
 
-  state.draftSlots = new Set(Array.isArray(myEntry?.slots) ? myEntry.slots : []);
+  const visibleKeys = new Set(getAllSlotKeys(data.board));
+  const myVisibleSlots = Array.isArray(myEntry?.slots)
+    ? myEntry.slots.filter((slot) => visibleKeys.has(slot))
+    : [];
+
+  state.draftSlots = new Set(myVisibleSlots);
 
   renderBoardDetails();
   renderEditorGrid();
@@ -104,15 +115,13 @@ function renderBoardDetails() {
   const board = state.currentBoard;
   if (!board) return;
 
-  dom.boardTitle.textContent = board.title;
-  dom.boardDescription.textContent = board.description;
+  dom.boardTitle.textContent = formatRange(board.startDate, board.endDate);
   dom.boardMeta.innerHTML = "";
 
   const badges = [
-    `${formatDate(board.startDate)} → ${formatDate(board.endDate)}`,
-    `${board.dayStartHour}h à ${board.dayEndHour}h`,
-    board.stepMinutes === 30 ? "Créneaux de 30 min" : "Créneaux de 1h",
-    `${state.participants.length} participant${state.participants.length > 1 ? "s" : ""}`,
+    `${board.dayStartHour}h–${board.dayEndHour}h`,
+    board.stepMinutes === 30 ? "30 min" : "1 h",
+    `${state.participants.length} personne${state.participants.length > 1 ? "s" : ""}`,
   ];
 
   badges.forEach((text) => {
@@ -137,7 +146,7 @@ function renderEditorGrid() {
   grid.appendChild(createGridCell("", "grid-head"));
   dates.forEach((date) => grid.appendChild(createGridCell(formatDayHeader(date), "grid-head")));
 
-  grid.appendChild(createGridCell("Journée", "grid-day-tools"));
+  grid.appendChild(createGridCell("Jour", "grid-day-tools"));
   dates.forEach((date) => {
     const wrapper = document.createElement("div");
     wrapper.className = "grid-day-tools";
@@ -147,7 +156,7 @@ function renderEditorGrid() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "day-toggle";
-    button.textContent = allSelected ? "Retirer" : "Tout le jour";
+    button.textContent = allSelected ? "Retirer" : "Tout";
     button.addEventListener("click", () => toggleDay(date, times, allSelected));
 
     const count = document.createElement("small");
@@ -185,7 +194,7 @@ function renderEditorGrid() {
     return dayKeys.every((key) => state.draftSlots.has(key));
   }).length;
 
-  dom.editorSummary.textContent = `${state.draftSlots.size} créneau${state.draftSlots.size > 1 ? "x" : ""} sélectionné${state.draftSlots.size > 1 ? "s" : ""} • ${fullDays} journée${fullDays > 1 ? "s" : ""} complète${fullDays > 1 ? "s" : ""}`;
+  dom.editorSummary.textContent = `${state.draftSlots.size} créneau${state.draftSlots.size > 1 ? "x" : ""} • ${fullDays} jour${fullDays > 1 ? "s" : ""}`;
 }
 
 function renderAggregate() {
@@ -194,7 +203,8 @@ function renderAggregate() {
 
   const dates = getDatesInRange(board.startDate, board.endDate);
   const times = getTimeSlots(board.dayStartHour, board.dayEndHour, board.stepMinutes);
-  const counts = aggregateCounts(state.participants);
+  const visibleKeys = getAllSlotKeys(board);
+  const counts = aggregateCounts(state.participants, visibleKeys);
   const maxCount = Math.max(0, ...Object.values(counts));
   const bestSlots = Object.entries(counts)
     .filter(([, count]) => count === maxCount && count > 0)
@@ -205,7 +215,7 @@ function renderAggregate() {
   legend.innerHTML = `
     <span><i></i> 0</span>
     <span><i class="level-3"></i> moyen</span>
-    <span><i class="level-5"></i> maximum</span>
+    <span><i class="level-5"></i> max</span>
   `;
 
   const grid = document.createElement("div");
@@ -215,12 +225,12 @@ function renderAggregate() {
   grid.appendChild(createGridCell("", "grid-head"));
   dates.forEach((date) => grid.appendChild(createGridCell(formatDayHeader(date), "grid-head")));
 
-  grid.appendChild(createGridCell("Total jour", "grid-day-tools"));
+  grid.appendChild(createGridCell("Total", "grid-day-tools"));
   dates.forEach((date) => {
     const dayTotal = times.reduce((sum, time) => sum + (counts[makeSlotKey(date, time.value)] || 0), 0);
     const wrapper = document.createElement("div");
     wrapper.className = "grid-day-tools";
-    wrapper.innerHTML = `<strong>${dayTotal}</strong><small class="muted">sélections</small>`;
+    wrapper.innerHTML = `<strong>${dayTotal}</strong>`;
     grid.appendChild(wrapper);
   });
 
@@ -249,19 +259,18 @@ function renderAggregate() {
   dom.aggregateGrid.append(legend, grid);
 
   if (bestSlots.length === 0) {
-    dom.aggregateSummary.textContent = "Aucune disponibilité enregistrée pour le moment.";
+    dom.aggregateSummary.textContent = "Aucune dispo.";
     return;
   }
 
-  const firstBestSlot = bestSlots[0][0];
-  const [bestDate, bestMinutes] = firstBestSlot.split("|");
-  dom.aggregateSummary.textContent = `${state.participants.length} participant${state.participants.length > 1 ? "s" : ""} • meilleur créneau actuel : ${formatDate(bestDate)} à ${minutesToLabel(Number(bestMinutes))} (${maxCount} personne${maxCount > 1 ? "s" : ""})`;
+  const [bestDate, bestMinutes] = bestSlots[0][0].split("|");
+  dom.aggregateSummary.textContent = `${formatShortDate(bestDate)} ${minutesToLabel(Number(bestMinutes))} • ${maxCount}`;
 }
 
 function renderParticipants() {
   if (!state.participants.length) {
     dom.participantsList.className = "stack compact-list empty-state";
-    dom.participantsList.textContent = "Aucun participant pour le moment.";
+    dom.participantsList.textContent = "Aucun";
     return;
   }
 
@@ -276,7 +285,6 @@ function renderParticipants() {
       item.innerHTML = `
         <div>
           <strong>${escapeHtml(participant.name || "Sans nom")}</strong>
-          <p class="muted">${participant.slots.length} créneau${participant.slots.length > 1 ? "x" : ""}</p>
         </div>
         <small class="muted">${formatDateTime(participant.updatedAt)}</small>
       `;
@@ -305,28 +313,36 @@ async function handleSaveAvailability(event) {
         participantToken,
         name: state.currentName,
         slots: [...state.draftSlots],
+        windowStartDate: board.startDate,
+        windowEndDate: board.endDate,
       }),
     });
 
-    await loadBoard({ toastMessage: "Disponibilités enregistrées." });
+    await loadBoard(board.startDate, { toastMessage: "Enregistré." });
   } catch (error) {
-    showToast(error.message || "Impossible d’enregistrer les disponibilités.");
+    showToast(error.message || "Impossible d’enregistrer.");
   } finally {
     setAvailabilityDisabled(false);
   }
+}
+
+function moveRange(direction) {
+  if (!state.currentBoard) return;
+  const nextStart = addDays(state.currentBoard.startDate, direction * state.currentBoard.windowDays);
+  loadBoard(nextStart).catch((error) => {
+    showToast(error.message || "Impossible de changer de période.");
+  });
 }
 
 function selectAllSlots() {
   if (!state.currentBoard) return;
   state.draftSlots = new Set(getAllSlotKeys(state.currentBoard));
   renderEditorGrid();
-  showToast("Tous les créneaux ont été cochés.");
 }
 
 function clearAllSlots() {
   state.draftSlots = new Set();
   renderEditorGrid();
-  showToast("Tous les créneaux ont été décochés.");
 }
 
 function toggleDraftSlot(key) {
@@ -358,10 +374,13 @@ function switchUser() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function aggregateCounts(participants) {
+function aggregateCounts(participants, visibleKeys) {
+  const visibleSet = new Set(visibleKeys);
   return participants.reduce((map, participant) => {
     participant.slots.forEach((slot) => {
-      map[slot] = (map[slot] || 0) + 1;
+      if (visibleSet.has(slot)) {
+        map[slot] = (map[slot] || 0) + 1;
+      }
     });
     return map;
   }, {});
@@ -386,12 +405,11 @@ function createGridCell(text, className) {
 
 function getDatesInRange(startDate, endDate) {
   const results = [];
-  let cursor = new Date(`${startDate}T00:00:00`);
-  const end = new Date(`${endDate}T00:00:00`);
+  let cursor = startDate;
 
-  while (cursor <= end) {
-    results.push(toDateInputValue(cursor));
-    cursor.setDate(cursor.getDate() + 1);
+  while (cursor <= endDate) {
+    results.push(cursor);
+    cursor = addDays(cursor, 1);
   }
 
   return results;
@@ -434,6 +452,17 @@ function formatDate(dateString) {
   }).format(new Date(`${dateString}T00:00:00`));
 }
 
+function formatShortDate(dateString) {
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+  }).format(new Date(`${dateString}T00:00:00`));
+}
+
+function formatRange(startDate, endDate) {
+  return `${formatShortDate(startDate)} → ${formatShortDate(endDate)}`;
+}
+
 function formatDayHeader(dateString) {
   const date = new Date(`${dateString}T00:00:00`);
   const weekday = new Intl.DateTimeFormat("fr-FR", { weekday: "short" }).format(date);
@@ -457,11 +486,11 @@ function capitalize(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function toDateInputValue(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+function addDays(dateString, daysToAdd) {
+  const [year, month, day] = dateString.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + daysToAdd);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
 function getOrCreateParticipantToken(boardId, createIfMissing) {
@@ -483,6 +512,8 @@ function setWelcomeDisabled(disabled) {
 function setAvailabilityDisabled(disabled) {
   dom.selectAll.disabled = disabled;
   dom.clearAll.disabled = disabled;
+  dom.prevRange.disabled = disabled;
+  dom.nextRange.disabled = disabled;
   [...dom.editorGrid.querySelectorAll("button")].forEach((button) => {
     button.disabled = disabled;
   });
@@ -500,9 +531,7 @@ async function api(url, options = {}) {
       ...options,
     });
   } catch {
-    throw new Error(
-      "Les fonctions Netlify ne sont pas joignables ici. Déploie ce projet sur Netlify pour activer l’enregistrement partagé.",
-    );
+    throw new Error("Déploie sur Netlify pour activer l’enregistrement partagé.");
   }
 
   let data = null;

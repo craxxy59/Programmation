@@ -2,36 +2,42 @@ import { getStore } from "@netlify/blobs";
 
 const store = getStore("dispocal-data");
 const BOARD_SETTINGS = {
-  title: "Disponibilités partagées",
-  description: "Planning commun des 14 prochains jours. Chacun indique simplement ses créneaux disponibles.",
-  days: 14,
+  id: "shared-board",
+  title: "DispoCal",
+  windowDays: 14,
   dayStartHour: 8,
   dayEndHour: 20,
   stepMinutes: 60,
   timezone: "Europe/Paris",
+  minOffsetDays: -60,
+  maxOffsetDays: 365,
 };
 
-export async function getSharedBoardWithParticipants() {
-  const board = getCurrentBoard();
-  const participants = await listParticipantsByBoard(board.id);
+export async function getSharedBoardWithParticipants(startDateInput) {
+  const board = getCurrentBoard(startDateInput);
+  const participants = await listParticipantsByBoard();
   return { board, participants };
 }
 
 export async function upsertAvailability(payload) {
   const clean = validateAvailabilityPayload(payload);
-  const board = getCurrentBoard();
+  const board = getCurrentBoard(clean.windowStartDate);
   const allowedSlots = new Set(getAllSlotKeys(board));
   const slots = clean.slots.filter((slot) => allowedSlots.has(slot));
+  const key = participantKey(clean.participantToken);
+  const existing = await store.get(key, { type: "json" });
+  const previousSlots = Array.isArray(existing?.slots) ? existing.slots : [];
+  const keptSlots = previousSlots.filter((slot) => !allowedSlots.has(slot));
 
   const participant = {
-    boardId: board.id,
+    boardId: BOARD_SETTINGS.id,
     participantToken: clean.participantToken,
     name: clean.name,
-    slots,
+    slots: [...new Set([...keptSlots, ...slots])],
     updatedAt: new Date().toISOString(),
   };
 
-  await store.setJSON(participantKey(board.id, clean.participantToken), participant);
+  await store.setJSON(key, participant);
   return { board, participant };
 }
 
@@ -60,6 +66,7 @@ function validateAvailabilityPayload(payload) {
   const participantToken = String(payload?.participantToken || "").trim();
   const name = String(payload?.name || "").trim();
   const slots = Array.isArray(payload?.slots) ? payload.slots.map((slot) => String(slot)) : [];
+  const windowStartDate = String(payload?.windowStartDate || "").trim();
 
   if (!participantToken) {
     throw createHttpError(400, "Identifiant participant manquant.");
@@ -67,6 +74,10 @@ function validateAvailabilityPayload(payload) {
 
   if (!name) {
     throw createHttpError(400, "Le nom est obligatoire.");
+  }
+
+  if (!isDateString(windowStartDate)) {
+    throw createHttpError(400, "Période invalide.");
   }
 
   if (slots.length > 1000) {
@@ -77,14 +88,13 @@ function validateAvailabilityPayload(payload) {
     participantToken,
     name: name.slice(0, 60),
     slots: [...new Set(slots)],
+    windowStartDate,
   };
 }
 
-async function listParticipantsByBoard(boardId) {
-  const { blobs } = await store.list({ prefix: participantPrefix(boardId) });
-  const participants = await Promise.all(
-    blobs.map((entry) => store.get(entry.key, { type: "json" })),
-  );
+async function listParticipantsByBoard() {
+  const { blobs } = await store.list({ prefix: participantPrefix() });
+  const participants = await Promise.all(blobs.map((entry) => store.get(entry.key, { type: "json" })));
 
   return participants
     .filter(Boolean)
@@ -97,16 +107,17 @@ async function listParticipantsByBoard(boardId) {
     }));
 }
 
-function getCurrentBoard() {
-  const startDate = getParisDateString();
-  const endDate = addDays(startDate, BOARD_SETTINGS.days - 1);
+function getCurrentBoard(startDateInput) {
+  const today = getParisDateString();
+  const startDate = normalizeStartDate(startDateInput, today);
+  const endDate = addDays(startDate, BOARD_SETTINGS.windowDays - 1);
 
   return {
-    id: `rolling-14-${startDate}`,
+    id: BOARD_SETTINGS.id,
     title: BOARD_SETTINGS.title,
-    description: BOARD_SETTINGS.description,
     startDate,
     endDate,
+    windowDays: BOARD_SETTINGS.windowDays,
     dayStartHour: BOARD_SETTINGS.dayStartHour,
     dayEndHour: BOARD_SETTINGS.dayEndHour,
     stepMinutes: BOARD_SETTINGS.stepMinutes,
@@ -114,12 +125,31 @@ function getCurrentBoard() {
   };
 }
 
-function participantPrefix(boardId) {
-  return `participants/${boardId}/`;
+function normalizeStartDate(startDateInput, today) {
+  if (!startDateInput) {
+    return today;
+  }
+
+  if (!isDateString(startDateInput)) {
+    throw createHttpError(400, "Date invalide.");
+  }
+
+  const minDate = addDays(today, BOARD_SETTINGS.minOffsetDays);
+  const maxDate = addDays(today, BOARD_SETTINGS.maxOffsetDays);
+
+  if (startDateInput < minDate || startDateInput > maxDate) {
+    throw createHttpError(400, "Période hors limite.");
+  }
+
+  return startDateInput;
 }
 
-function participantKey(boardId, participantToken) {
-  return `${participantPrefix(boardId)}${participantToken}`;
+function participantPrefix() {
+  return `participants/${BOARD_SETTINGS.id}/`;
+}
+
+function participantKey(participantToken) {
+  return `${participantPrefix()}${participantToken}`;
 }
 
 function getParisDateString() {
@@ -168,4 +198,8 @@ function getAllSlotKeys(board) {
   const dates = getDatesInRange(board.startDate, board.endDate);
   const times = getTimeSlots(board.dayStartHour, board.dayEndHour, board.stepMinutes);
   return dates.flatMap((date) => times.map((time) => `${date}|${time}`));
+}
+
+function isDateString(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
