@@ -7,8 +7,8 @@ export default async (req) => {
 
   try {
     const payload = await req.json();
-    const participant = await upsertAvailability(payload);
-    return jsonResponse({ participant }, 200);
+    const data = await upsertAvailability(payload);
+    return jsonResponse(data, 200);
   } catch (error) {
     return errorResponse(error);
   }

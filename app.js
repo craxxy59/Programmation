@@ -1,29 +1,25 @@
 const state = {
-  currentEvent: null,
+  currentBoard: null,
   participants: [],
   draftSlots: new Set(),
   currentParticipantToken: null,
+  currentName: "",
 };
 
-const RECENT_EVENTS_KEY = "dispocal:recent-events";
-const PREFILL_NAME_KEY = "dispocal:owner-prefill:";
+const NAME_KEY = "dispocal:shared-name";
 const PARTICIPANT_KEY_PREFIX = "dispocal:participant:";
 
 const dom = {
-  createForm: document.querySelector("#create-form"),
-  recentEvents: document.querySelector("#recent-events"),
-  recentSection: document.querySelector("#recent-section"),
-  clearRecent: document.querySelector("#clear-recent"),
-  eventSection: document.querySelector("#event-section"),
-  eventTitle: document.querySelector("#event-title"),
-  eventDescription: document.querySelector("#event-description"),
-  eventMeta: document.querySelector("#event-meta"),
-  shareLink: document.querySelector("#share-link"),
-  copyLink: document.querySelector("#copy-link"),
-  backHome: document.querySelector("#back-home"),
-  participantForm: document.querySelector("#participant-form"),
-  participantName: document.querySelector("#participant-name"),
-  participantNote: document.querySelector("#participant-note"),
+  welcomeSection: document.querySelector("#welcome-section"),
+  welcomeForm: document.querySelector("#welcome-form"),
+  welcomeName: document.querySelector("#welcome-name"),
+  calendarSection: document.querySelector("#calendar-section"),
+  boardTitle: document.querySelector("#board-title"),
+  boardDescription: document.querySelector("#board-description"),
+  boardMeta: document.querySelector("#board-meta"),
+  currentNameBadge: document.querySelector("#current-name-badge"),
+  changeName: document.querySelector("#change-name"),
+  availabilityForm: document.querySelector("#availability-form"),
   editorSummary: document.querySelector("#editor-summary"),
   editorGrid: document.querySelector("#editor-grid"),
   aggregateSummary: document.querySelector("#aggregate-summary"),
@@ -37,143 +33,85 @@ const dom = {
 init();
 
 function init() {
-  setDefaultDates();
   bindEvents();
-  renderRecentEvents();
-
-  const eventId = new URLSearchParams(window.location.search).get("event");
-  if (eventId) {
-    loadEvent(eventId, { focus: false });
-  }
+  const savedName = localStorage.getItem(NAME_KEY) || "";
+  dom.welcomeName.value = savedName;
 }
 
 function bindEvents() {
-  dom.createForm.addEventListener("submit", handleCreateEvent);
-  dom.participantForm.addEventListener("submit", handleSaveAvailability);
-  dom.copyLink.addEventListener("click", copyShareLink);
-  dom.backHome.addEventListener("click", closeEvent);
-  dom.clearRecent.addEventListener("click", clearRecentEvents);
-  dom.selectAll.addEventListener("click", () => {
-    if (!state.currentEvent) return;
-    state.draftSlots = new Set(getAllSlotKeys(state.currentEvent));
-    renderEditorGrid();
-    showToast("Tous les créneaux ont été cochés.");
-  });
-  dom.clearAll.addEventListener("click", () => {
-    state.draftSlots = new Set();
-    renderEditorGrid();
-    showToast("Tous les créneaux ont été décochés.");
-  });
-
-  window.addEventListener("popstate", () => {
-    const eventId = new URLSearchParams(window.location.search).get("event");
-    if (eventId) {
-      loadEvent(eventId, { focus: false });
-    } else {
-      closeEvent({ updateUrl: false });
-    }
-  });
+  dom.welcomeForm.addEventListener("submit", handleWelcomeSubmit);
+  dom.availabilityForm.addEventListener("submit", handleSaveAvailability);
+  dom.selectAll.addEventListener("click", selectAllSlots);
+  dom.clearAll.addEventListener("click", clearAllSlots);
+  dom.changeName.addEventListener("click", switchUser);
 }
 
-function setDefaultDates() {
-  const today = new Date();
-  const nextWeek = new Date(today);
-  nextWeek.setDate(nextWeek.getDate() + 6);
-  dom.createForm.elements.startDate.value = toDateInputValue(today);
-  dom.createForm.elements.endDate.value = toDateInputValue(nextWeek);
-}
-
-async function handleCreateEvent(event) {
+async function handleWelcomeSubmit(event) {
   event.preventDefault();
 
-  const formData = new FormData(dom.createForm);
-  const payload = {
-    title: String(formData.get("title") || "").trim(),
-    description: String(formData.get("description") || "").trim(),
-    startDate: String(formData.get("startDate") || "").trim(),
-    endDate: String(formData.get("endDate") || "").trim(),
-    dayStartHour: Number(formData.get("dayStartHour")),
-    dayEndHour: Number(formData.get("dayEndHour")),
-    stepMinutes: Number(formData.get("stepMinutes")),
-  };
+  const name = dom.welcomeName.value.trim();
+  if (!name) {
+    showToast("Entre ton nom pour continuer.");
+    dom.welcomeName.focus();
+    return;
+  }
 
-  const ownerName = String(formData.get("ownerName") || "").trim();
+  state.currentName = name;
+  localStorage.setItem(NAME_KEY, name);
 
   try {
-    setCreateFormDisabled(true);
-    const data = await api("/.netlify/functions/create-event", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-
-    if (ownerName) {
-      localStorage.setItem(`${PREFILL_NAME_KEY}${data.event.id}`, ownerName);
-    }
-
-    rememberRecentEvent(data.event);
-    dom.createForm.reset();
-    setDefaultDates();
-    showToast("Événement créé.");
-    updateUrlForEvent(data.event.id);
-    await loadEvent(data.event.id);
+    setWelcomeDisabled(true);
+    await loadBoard();
+    showCalendar();
   } catch (error) {
-    showToast(error.message || "Impossible de créer l’événement.");
+    showToast(error.message || "Impossible de charger le calendrier.");
   } finally {
-    setCreateFormDisabled(false);
+    setWelcomeDisabled(false);
   }
 }
 
-async function loadEvent(eventId, options = {}) {
-  try {
-    dom.eventSection.classList.remove("hidden");
-    dom.eventTitle.textContent = "Chargement…";
-    const data = await api(`/.netlify/functions/event?id=${encodeURIComponent(eventId)}`);
+async function loadBoard(options = {}) {
+  const data = await api("/.netlify/functions/board");
 
-    state.currentEvent = data.event;
-    state.participants = Array.isArray(data.participants) ? data.participants : [];
-    state.currentParticipantToken = getOrCreateParticipantToken(eventId, false);
+  state.currentBoard = data.board;
+  state.participants = Array.isArray(data.participants) ? data.participants : [];
+  state.currentParticipantToken = getOrCreateParticipantToken(data.board.id, false);
 
-    const myEntry = state.participants.find(
-      (participant) => participant.participantToken === state.currentParticipantToken,
-    );
-    const prefillName = localStorage.getItem(`${PREFILL_NAME_KEY}${eventId}`) || "";
+  const myEntry = state.participants.find(
+    (participant) => participant.participantToken === state.currentParticipantToken,
+  );
 
-    dom.participantName.value = myEntry?.name || prefillName;
-    dom.participantNote.value = myEntry?.note || "";
-    state.draftSlots = new Set(Array.isArray(myEntry?.slots) ? myEntry.slots : []);
+  state.draftSlots = new Set(Array.isArray(myEntry?.slots) ? myEntry.slots : []);
 
-    renderEventDetails();
-    renderEditorGrid();
-    renderAggregate();
-    renderParticipants();
-    rememberRecentEvent(data.event);
-    renderRecentEvents();
+  renderBoardDetails();
+  renderEditorGrid();
+  renderAggregate();
+  renderParticipants();
 
-    if (options.focus !== false) {
-      dom.eventSection.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  } catch (error) {
-    dom.eventSection.classList.add("hidden");
-    showToast(
-      error.message ||
-        "Impossible de charger cet événement. Vérifie le lien ou déploie le site sur Netlify pour activer les fonctions.",
-    );
+  if (options.toastMessage) {
+    showToast(options.toastMessage);
   }
 }
 
-function renderEventDetails() {
-  const event = state.currentEvent;
-  if (!event) return;
+function showCalendar() {
+  dom.currentNameBadge.textContent = state.currentName;
+  dom.welcomeSection.classList.add("hidden");
+  dom.calendarSection.classList.remove("hidden");
+  dom.calendarSection.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
-  dom.eventTitle.textContent = event.title;
-  dom.eventDescription.textContent = event.description || "Pas de description.";
-  dom.shareLink.value = buildShareLink(event.id);
-  dom.eventMeta.innerHTML = "";
+function renderBoardDetails() {
+  const board = state.currentBoard;
+  if (!board) return;
+
+  dom.boardTitle.textContent = board.title;
+  dom.boardDescription.textContent = board.description;
+  dom.boardMeta.innerHTML = "";
 
   const badges = [
-    `${formatDate(event.startDate)} → ${formatDate(event.endDate)}`,
-    `${event.dayStartHour}h à ${event.dayEndHour}h`,
-    event.stepMinutes === 30 ? "Créneaux de 30 min" : "Créneaux de 1h",
+    `${formatDate(board.startDate)} → ${formatDate(board.endDate)}`,
+    `${board.dayStartHour}h à ${board.dayEndHour}h`,
+    board.stepMinutes === 30 ? "Créneaux de 30 min" : "Créneaux de 1h",
     `${state.participants.length} participant${state.participants.length > 1 ? "s" : ""}`,
   ];
 
@@ -181,17 +119,16 @@ function renderEventDetails() {
     const badge = document.createElement("span");
     badge.className = "badge";
     badge.textContent = text;
-    dom.eventMeta.appendChild(badge);
+    dom.boardMeta.appendChild(badge);
   });
 }
 
 function renderEditorGrid() {
-  const event = state.currentEvent;
-  if (!event) return;
+  const board = state.currentBoard;
+  if (!board) return;
 
-  const dates = getDatesInRange(event.startDate, event.endDate);
-  const times = getTimeSlots(event.dayStartHour, event.dayEndHour, event.stepMinutes);
-  const allKeys = getAllSlotKeys(event);
+  const dates = getDatesInRange(board.startDate, board.endDate);
+  const times = getTimeSlots(board.dayStartHour, board.dayEndHour, board.stepMinutes);
 
   const grid = document.createElement("div");
   grid.className = "calendar-grid";
@@ -210,17 +147,8 @@ function renderEditorGrid() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "day-toggle";
-    button.textContent = allSelected ? "Tout retirer" : "Tout le jour";
-    button.addEventListener("click", () => {
-      dayKeys.forEach((key) => {
-        if (allSelected) {
-          state.draftSlots.delete(key);
-        } else {
-          state.draftSlots.add(key);
-        }
-      });
-      renderEditorGrid();
-    });
+    button.textContent = allSelected ? "Retirer" : "Tout le jour";
+    button.addEventListener("click", () => toggleDay(date, times, allSelected));
 
     const count = document.createElement("small");
     count.className = "muted";
@@ -242,9 +170,7 @@ function renderEditorGrid() {
       button.className = `slot-button ${state.draftSlots.has(key) ? "selected" : ""}`;
       button.textContent = state.draftSlots.has(key) ? "✓" : "";
       button.setAttribute("aria-label", `${formatDate(date)} à ${time.label}`);
-      button.addEventListener("click", () => {
-        toggleDraftSlot(key);
-      });
+      button.addEventListener("click", () => toggleDraftSlot(key));
 
       cell.appendChild(button);
       grid.appendChild(cell);
@@ -260,19 +186,14 @@ function renderEditorGrid() {
   }).length;
 
   dom.editorSummary.textContent = `${state.draftSlots.size} créneau${state.draftSlots.size > 1 ? "x" : ""} sélectionné${state.draftSlots.size > 1 ? "s" : ""} • ${fullDays} journée${fullDays > 1 ? "s" : ""} complète${fullDays > 1 ? "s" : ""}`;
-
-  const invalidKeys = [...state.draftSlots].filter((key) => !allKeys.includes(key));
-  if (invalidKeys.length > 0) {
-    state.draftSlots = new Set([...state.draftSlots].filter((key) => allKeys.includes(key)));
-  }
 }
 
 function renderAggregate() {
-  const event = state.currentEvent;
-  if (!event) return;
+  const board = state.currentBoard;
+  if (!board) return;
 
-  const dates = getDatesInRange(event.startDate, event.endDate);
-  const times = getTimeSlots(event.dayStartHour, event.dayEndHour, event.stepMinutes);
+  const dates = getDatesInRange(board.startDate, board.endDate);
+  const times = getTimeSlots(board.dayStartHour, board.dayEndHour, board.stepMinutes);
   const counts = aggregateCounts(state.participants);
   const maxCount = Math.max(0, ...Object.values(counts));
   const bestSlots = Object.entries(counts)
@@ -355,7 +276,7 @@ function renderParticipants() {
       item.innerHTML = `
         <div>
           <strong>${escapeHtml(participant.name || "Sans nom")}</strong>
-          <p class="muted">${participant.slots.length} créneau${participant.slots.length > 1 ? "x" : ""}${participant.note ? ` • ${escapeHtml(participant.note)}` : ""}</p>
+          <p class="muted">${participant.slots.length} créneau${participant.slots.length > 1 ? "x" : ""}</p>
         </div>
         <small class="muted">${formatDateTime(participant.updatedAt)}</small>
       `;
@@ -366,39 +287,46 @@ function renderParticipants() {
 async function handleSaveAvailability(event) {
   event.preventDefault();
 
-  if (!state.currentEvent) return;
-
-  const name = dom.participantName.value.trim();
-  const note = dom.participantNote.value.trim();
-  if (!name) {
-    showToast("Ajoute d’abord ton nom.");
-    dom.participantName.focus();
+  const board = state.currentBoard;
+  if (!board) return;
+  if (!state.currentName) {
+    showToast("Nom manquant.");
+    switchUser();
     return;
   }
 
-  const participantToken = getOrCreateParticipantToken(state.currentEvent.id, true);
+  const participantToken = getOrCreateParticipantToken(board.id, true);
 
   try {
-    setParticipantFormDisabled(true);
+    setAvailabilityDisabled(true);
     await api("/.netlify/functions/save-availability", {
       method: "POST",
       body: JSON.stringify({
-        eventId: state.currentEvent.id,
         participantToken,
-        name,
-        note,
+        name: state.currentName,
         slots: [...state.draftSlots],
       }),
     });
 
-    localStorage.setItem(`${PREFILL_NAME_KEY}${state.currentEvent.id}`, name);
-    showToast("Disponibilités enregistrées.");
-    await loadEvent(state.currentEvent.id, { focus: false });
+    await loadBoard({ toastMessage: "Disponibilités enregistrées." });
   } catch (error) {
     showToast(error.message || "Impossible d’enregistrer les disponibilités.");
   } finally {
-    setParticipantFormDisabled(false);
+    setAvailabilityDisabled(false);
   }
+}
+
+function selectAllSlots() {
+  if (!state.currentBoard) return;
+  state.draftSlots = new Set(getAllSlotKeys(state.currentBoard));
+  renderEditorGrid();
+  showToast("Tous les créneaux ont été cochés.");
+}
+
+function clearAllSlots() {
+  state.draftSlots = new Set();
+  renderEditorGrid();
+  showToast("Tous les créneaux ont été décochés.");
 }
 
 function toggleDraftSlot(key) {
@@ -408,6 +336,26 @@ function toggleDraftSlot(key) {
     state.draftSlots.add(key);
   }
   renderEditorGrid();
+}
+
+function toggleDay(date, times, allSelected) {
+  const dayKeys = times.map((time) => makeSlotKey(date, time.value));
+  dayKeys.forEach((key) => {
+    if (allSelected) {
+      state.draftSlots.delete(key);
+    } else {
+      state.draftSlots.add(key);
+    }
+  });
+  renderEditorGrid();
+}
+
+function switchUser() {
+  dom.calendarSection.classList.add("hidden");
+  dom.welcomeSection.classList.remove("hidden");
+  dom.welcomeName.value = state.currentName || localStorage.getItem(NAME_KEY) || "";
+  dom.welcomeName.focus();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function aggregateCounts(participants) {
@@ -461,9 +409,9 @@ function getTimeSlots(dayStartHour, dayEndHour, stepMinutes) {
   return slots;
 }
 
-function getAllSlotKeys(event) {
-  const dates = getDatesInRange(event.startDate, event.endDate);
-  const times = getTimeSlots(event.dayStartHour, event.dayEndHour, event.stepMinutes);
+function getAllSlotKeys(board) {
+  const dates = getDatesInRange(board.startDate, board.endDate);
+  const times = getTimeSlots(board.dayStartHour, board.dayEndHour, board.stepMinutes);
   return dates.flatMap((date) => times.map((time) => makeSlotKey(date, time.value)));
 }
 
@@ -516,44 +464,8 @@ function toDateInputValue(date) {
   return `${year}-${month}-${day}`;
 }
 
-function buildShareLink(eventId) {
-  const url = new URL(window.location.href);
-  url.searchParams.set("event", eventId);
-  url.hash = "";
-  return url.toString();
-}
-
-function updateUrlForEvent(eventId) {
-  const url = new URL(window.location.href);
-  url.searchParams.set("event", eventId);
-  history.pushState({}, "", url);
-}
-
-function closeEvent(options = {}) {
-  state.currentEvent = null;
-  state.participants = [];
-  state.draftSlots = new Set();
-  dom.eventSection.classList.add("hidden");
-
-  if (options.updateUrl !== false) {
-    const url = new URL(window.location.href);
-    url.searchParams.delete("event");
-    history.pushState({}, "", url);
-  }
-
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
-function copyShareLink() {
-  if (!dom.shareLink.value) return;
-  navigator.clipboard
-    .writeText(dom.shareLink.value)
-    .then(() => showToast("Lien copié."))
-    .catch(() => showToast("Impossible de copier le lien automatiquement."));
-}
-
-function getOrCreateParticipantToken(eventId, createIfMissing) {
-  const key = `${PARTICIPANT_KEY_PREFIX}${eventId}`;
+function getOrCreateParticipantToken(boardId, createIfMissing) {
+  const key = `${PARTICIPANT_KEY_PREFIX}${boardId}`;
   let token = localStorage.getItem(key);
   if (!token && createIfMissing) {
     token = crypto.randomUUID();
@@ -562,82 +474,19 @@ function getOrCreateParticipantToken(eventId, createIfMissing) {
   return token;
 }
 
-function rememberRecentEvent(event) {
-  const current = readRecentEvents().filter((item) => item.id !== event.id);
-  current.unshift({
-    id: event.id,
-    title: event.title,
-    startDate: event.startDate,
-    endDate: event.endDate,
-    updatedAt: new Date().toISOString(),
-  });
-  localStorage.setItem(RECENT_EVENTS_KEY, JSON.stringify(current.slice(0, 8)));
-}
-
-function readRecentEvents() {
-  try {
-    return JSON.parse(localStorage.getItem(RECENT_EVENTS_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function renderRecentEvents() {
-  const events = readRecentEvents();
-  if (!events.length) {
-    dom.recentEvents.className = "stack compact-list empty-state";
-    dom.recentEvents.textContent = "Aucun événement récent sur cet appareil.";
-    return;
-  }
-
-  dom.recentEvents.className = "stack compact-list";
-  dom.recentEvents.innerHTML = "";
-
-  events.forEach((event) => {
-    const item = document.createElement("article");
-    item.className = "list-item";
-    item.innerHTML = `
-      <div>
-        <strong>${escapeHtml(event.title)}</strong>
-        <p class="muted">${formatDate(event.startDate)} → ${formatDate(event.endDate)}</p>
-      </div>
-    `;
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "ghost-button";
-    button.textContent = "Ouvrir";
-    button.addEventListener("click", async () => {
-      updateUrlForEvent(event.id);
-      await loadEvent(event.id);
-    });
-
-    item.appendChild(button);
-    dom.recentEvents.appendChild(item);
-  });
-}
-
-function clearRecentEvents() {
-  localStorage.removeItem(RECENT_EVENTS_KEY);
-  renderRecentEvents();
-  showToast("Historique local vidé.");
-}
-
-function setCreateFormDisabled(disabled) {
-  [...dom.createForm.elements].forEach((element) => {
+function setWelcomeDisabled(disabled) {
+  [...dom.welcomeForm.elements].forEach((element) => {
     element.disabled = disabled;
   });
 }
 
-function setParticipantFormDisabled(disabled) {
-  dom.participantName.disabled = disabled;
-  dom.participantNote.disabled = disabled;
+function setAvailabilityDisabled(disabled) {
   dom.selectAll.disabled = disabled;
   dom.clearAll.disabled = disabled;
   [...dom.editorGrid.querySelectorAll("button")].forEach((button) => {
     button.disabled = disabled;
   });
-  dom.participantForm.querySelector('button[type="submit"]').disabled = disabled;
+  dom.availabilityForm.querySelector('button[type="submit"]').disabled = disabled;
 }
 
 async function api(url, options = {}) {

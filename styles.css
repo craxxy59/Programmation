@@ -2,16 +2,12 @@
   --bg: #0b1020;
   --panel: rgba(18, 27, 53, 0.88);
   --panel-strong: #101a36;
-  --panel-soft: #162246;
   --text: #edf2ff;
   --muted: #a9b7dc;
   --border: rgba(169, 183, 220, 0.15);
   --accent: #5eead4;
-  --accent-strong: #2dd4bf;
-  --danger: #fb7185;
   --shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
   --radius: 22px;
-  --radius-sm: 14px;
   --cell-size: 46px;
 }
 
@@ -45,7 +41,7 @@ button {
 }
 
 .shell {
-  width: min(1200px, calc(100vw - 32px));
+  width: min(1240px, calc(100vw - 32px));
   margin: 0 auto;
   padding: 28px 0 60px;
 }
@@ -66,7 +62,7 @@ button {
 
 .lead {
   margin: 0;
-  max-width: 680px;
+  max-width: 740px;
   color: var(--muted);
   font-size: 1.05rem;
 }
@@ -98,6 +94,11 @@ button {
   padding: 22px;
 }
 
+.card-narrow {
+  max-width: 560px;
+  margin: 0 auto;
+}
+
 .subcard {
   padding: 18px;
   background: rgba(16, 26, 54, 0.85);
@@ -108,12 +109,8 @@ button {
   gap: 16px;
 }
 
-.form-grid {
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-}
-
-.form-grid .full-width {
-  grid-column: 1 / -1;
+.gap-sm {
+  gap: 8px;
 }
 
 label {
@@ -184,7 +181,6 @@ button:focus-visible {
   padding: 6px 0;
 }
 
-.hint,
 .muted {
   color: var(--muted);
 }
@@ -199,7 +195,6 @@ button:focus-visible {
 
 .section-title-row,
 .toolbar,
-.share-row,
 .event-meta {
   display: flex;
   flex-wrap: wrap;
@@ -210,6 +205,10 @@ button:focus-visible {
 
 .toolbar {
   justify-content: flex-start;
+}
+
+.toolbar-end {
+  justify-content: flex-end;
 }
 
 .event-meta {
@@ -225,10 +224,6 @@ button:focus-visible {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--border);
   color: var(--muted);
-}
-
-.share-row input {
-  flex: 1 1 320px;
 }
 
 .split {
@@ -426,7 +421,7 @@ button:focus-visible {
 
 @media (max-width: 720px) {
   .shell {
-    width: min(100vw - 20px, 1200px);
+    width: min(100vw - 20px, 1240px);
     padding-top: 20px;
   }
 

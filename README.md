@@ -1,16 +1,15 @@
 # DispoCal
 
-Petit site de disponibilités partagé, prévu pour être hébergé sur **Netlify**.
+Site de disponibilités partagé, prévu pour être hébergé sur **Netlify**.
 
-## Ce que fait ce MVP
+## Nouveau fonctionnement
 
-- création de plusieurs événements
-- lien partageable par événement
-- saisie des disponibilités par plusieurs personnes
-- vue créneaux horaires (30 min ou 1 h)
-- bouton "tout le jour" pour remplir une journée entière
-- vue d'ensemble avec comptage des participants par créneau
-- pas de comptes utilisateurs
+- on arrive directement sur une page qui demande **le nom**
+- après validation, on accède tout de suite au **calendrier partagé**
+- il n’y a **plus de création d’événement**
+- le calendrier affiche les **14 prochains jours**
+- plusieurs personnes peuvent remplir leurs disponibilités sur le même planning
+- vue d’ensemble avec comptage des participants par créneau
 
 ## Stack
 
@@ -18,25 +17,18 @@ Petit site de disponibilités partagé, prévu pour être hébergé sur **Netlif
 - Backend : **Netlify Functions**
 - Stockage partagé : **Netlify Blobs**
 
-## Fichiers importants
+## API utilisée
 
-- `index.html` : interface
-- `app.js` : logique client
-- `netlify/functions/create-event.mjs` : création d'événement
-- `netlify/functions/event.mjs` : lecture d'un événement + participants
-- `netlify/functions/save-availability.mjs` : enregistrement des disponibilités
-- `netlify/functions/lib/data.mjs` : couche de stockage et validations
+- `GET /.netlify/functions/board` : récupère le calendrier partagé courant + les participants
+- `POST /.netlify/functions/save-availability` : enregistre les disponibilités d’une personne
 
 ## Déploiement sur Netlify
-
-### Option simple
 
 1. Mets ces fichiers dans un dépôt GitHub.
 2. Va sur Netlify.
 3. Clique sur **Add new project**.
 4. Importe le dépôt.
-5. Laisse Netlify détecter automatiquement le projet.
-6. Déploie.
+5. Déploie.
 
 Le fichier `netlify.toml` indique déjà :
 
@@ -50,21 +42,17 @@ npm install
 npx netlify dev
 ```
 
-Puis ouvre l'URL fournie par Netlify CLI.
+## Notes
 
-## Limitations actuelles du MVP
+- pas de comptes utilisateurs
+- chaque navigateur garde un identifiant local pour éviter que tout le monde écrase la même fiche
+- le planning est un **calendrier partagé unique**
+- la fenêtre affichée est **glissante sur 14 jours**
 
-- pas d'authentification
-- pas de permissions avancées
-- chaque navigateur garde un identifiant local pour éviter d'écraser la fiche d'un autre participant
-- pas encore de suppression d'événement
-- plage limitée à 45 jours pour garder une grille lisible
+## Évolutions possibles
 
-## Idées pour la V2
-
-- comptes utilisateurs
-- lien admin et lien participant
-- suppression / archivage d'événements
+- page admin pour régler les horaires et le nombre de jours
+- vue mensuelle
 - export CSV / ICS
-- commentaires par créneau
-- filtres par participant
+- suppression d’un participant
+- code d’accès privé pour protéger le planning

@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DispoCal — calendrier partagé</title>
+    <title>DispoCal — disponibilités partagées</title>
     <meta
       name="description"
-      content="Calendrier partagé pour recueillir les disponibilités de plusieurs personnes, hébergeable gratuitement sur Netlify."
+      content="Calendrier partagé de disponibilités : on saisit son nom puis on remplit directement ses créneaux."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -15,127 +15,69 @@
       <header class="hero">
         <div>
           <p class="eyebrow">DispoCal</p>
-          <h1>Calendrier partagé de disponibilités</h1>
+          <h1>Vos disponibilités, sans création d’événement</h1>
           <p class="lead">
-            Crée un événement, partage le lien, et chaque personne remplit ses créneaux.
+            Chaque personne entre son nom, puis accède directement au calendrier partagé des 14 prochains jours.
           </p>
         </div>
-        <a class="ghost-button" href="#create-form">Créer un événement</a>
       </header>
 
       <main class="layout">
-        <section class="card stack">
-          <h2>Créer un événement</h2>
-          <form id="create-form" class="stack form-grid">
-            <label>
-              <span>Titre</span>
-              <input name="title" required maxlength="80" placeholder="Ex. Réunion équipe juillet" />
-            </label>
+        <section id="welcome-section" class="card card-narrow stack">
+          <div class="stack gap-sm">
+            <h2>Entrer dans le calendrier</h2>
+            <p class="muted">
+              Renseigne simplement ton nom pour accéder au planning partagé.
+            </p>
+          </div>
 
-            <label class="full-width">
-              <span>Description</span>
-              <textarea
-                name="description"
-                rows="3"
-                maxlength="240"
-                placeholder="Ex. On cherche le meilleur créneau pour se voir."
-              ></textarea>
-            </label>
-
-            <label>
-              <span>Date de début</span>
-              <input name="startDate" type="date" required />
-            </label>
-
-            <label>
-              <span>Date de fin</span>
-              <input name="endDate" type="date" required />
-            </label>
-
-            <label>
-              <span>Heure de début</span>
-              <input name="dayStartHour" type="number" min="0" max="23" value="8" required />
-            </label>
-
-            <label>
-              <span>Heure de fin</span>
-              <input name="dayEndHour" type="number" min="1" max="24" value="20" required />
-            </label>
-
-            <label>
-              <span>Pas de temps</span>
-              <select name="stepMinutes">
-                <option value="60">1 heure</option>
-                <option value="30">30 minutes</option>
-              </select>
-            </label>
-
+          <form id="welcome-form" class="stack">
             <label>
               <span>Ton nom</span>
-              <input name="ownerName" maxlength="60" placeholder="Ex. Camille" />
+              <input
+                id="welcome-name"
+                name="name"
+                maxlength="60"
+                required
+                placeholder="Ex. Camille"
+                autocomplete="name"
+              />
             </label>
 
-            <button type="submit" class="primary-button">Créer et ouvrir le lien</button>
-            <p class="hint full-width">
-              Astuce : après création, tu pourras partager le lien directement aux participants.
-            </p>
+            <button type="submit" class="primary-button">Accéder au calendrier</button>
           </form>
         </section>
 
-        <section class="card stack" id="recent-section">
-          <div class="section-title-row">
-            <h2>Mes événements récents</h2>
-            <button id="clear-recent" class="text-button" type="button">Vider</button>
-          </div>
-          <div id="recent-events" class="stack compact-list empty-state">
-            Aucun événement récent sur cet appareil.
-          </div>
-        </section>
-
-        <section id="event-section" class="card stack hidden">
+        <section id="calendar-section" class="card stack hidden">
           <div class="section-title-row">
             <div>
-              <p class="eyebrow">Événement</p>
-              <h2 id="event-title">Chargement…</h2>
+              <p class="eyebrow">Calendrier partagé</p>
+              <h2 id="board-title">Chargement…</h2>
             </div>
-            <button id="back-home" class="ghost-button" type="button">Retour</button>
+            <div class="toolbar toolbar-end">
+              <span id="current-name-badge" class="badge"></span>
+              <button id="change-name" type="button" class="ghost-button">Changer de nom</button>
+            </div>
           </div>
 
-          <p id="event-description" class="muted"></p>
+          <p id="board-description" class="muted"></p>
 
-          <div class="event-meta" id="event-meta"></div>
-
-          <div class="share-row">
-            <input id="share-link" readonly />
-            <button id="copy-link" type="button" class="primary-button">Copier le lien</button>
-          </div>
+          <div class="event-meta" id="board-meta"></div>
 
           <div class="split">
             <section class="subcard stack">
-              <h3>Mes disponibilités</h3>
-              <form id="participant-form" class="stack">
-                <label>
-                  <span>Mon nom</span>
-                  <input id="participant-name" maxlength="60" required placeholder="Ex. Alex" />
-                </label>
-
-                <label>
-                  <span>Note (optionnel)</span>
-                  <input id="participant-note" maxlength="120" placeholder="Ex. Disponible plutôt après 18h" />
-                </label>
-
+              <div class="section-title-row">
+                <h3>Mes disponibilités</h3>
                 <div class="toolbar">
                   <button id="select-all" type="button" class="ghost-button">Tout cocher</button>
                   <button id="clear-all" type="button" class="ghost-button">Tout décocher</button>
                 </div>
+              </div>
 
+              <form id="availability-form" class="stack">
                 <div id="editor-summary" class="muted small"></div>
                 <div id="editor-grid" class="calendar-grid-wrapper"></div>
-
                 <button type="submit" class="primary-button">Enregistrer mes disponibilités</button>
-                <p class="hint">
-                  Chaque appareil garde son propre identifiant local : sans compte, cela évite que tout le monde modifie la même fiche.
-                </p>
               </form>
             </section>
 

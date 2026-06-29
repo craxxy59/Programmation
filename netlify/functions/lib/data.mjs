@@ -1,74 +1,38 @@
 import { getStore } from "@netlify/blobs";
 
 const store = getStore("dispocal-data");
+const BOARD_SETTINGS = {
+  title: "Disponibilités partagées",
+  description: "Planning commun des 14 prochains jours. Chacun indique simplement ses créneaux disponibles.",
+  days: 14,
+  dayStartHour: 8,
+  dayEndHour: 20,
+  stepMinutes: 60,
+  timezone: "Europe/Paris",
+};
 
-export async function createEvent(payload) {
-  const clean = validateEventPayload(payload);
-  const id = `${slugify(clean.title).slice(0, 40) || "event"}-${crypto.randomUUID().slice(0, 8)}`;
-  const now = new Date().toISOString();
-
-  const event = {
-    id,
-    ...clean,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  await store.setJSON(eventKey(id), event, { onlyIfNew: true });
-  return event;
-}
-
-export async function getEventById(id) {
-  const event = await store.get(eventKey(id), { type: "json" });
-  return event;
-}
-
-export async function listParticipantsByEvent(eventId) {
-  const { blobs } = await store.list({ prefix: participantPrefix(eventId) });
-  const participants = await Promise.all(
-    blobs.map((entry) => store.get(entry.key, { type: "json" })),
-  );
-
-  return participants
-    .filter(Boolean)
-    .map((participant) => ({
-      eventId: participant.eventId,
-      participantToken: participant.participantToken,
-      name: participant.name,
-      note: participant.note || "",
-      slots: Array.isArray(participant.slots) ? participant.slots : [],
-      updatedAt: participant.updatedAt,
-    }));
+export async function getSharedBoardWithParticipants() {
+  const board = getCurrentBoard();
+  const participants = await listParticipantsByBoard(board.id);
+  return { board, participants };
 }
 
 export async function upsertAvailability(payload) {
   const clean = validateAvailabilityPayload(payload);
-  const event = await getEventById(clean.eventId);
-
-  if (!event) {
-    throw createHttpError(404, "Événement introuvable.");
-  }
-
-  const allowedSlots = new Set(getAllSlotKeys(event));
+  const board = getCurrentBoard();
+  const allowedSlots = new Set(getAllSlotKeys(board));
   const slots = clean.slots.filter((slot) => allowedSlots.has(slot));
 
   const participant = {
-    eventId: clean.eventId,
+    boardId: board.id,
     participantToken: clean.participantToken,
     name: clean.name,
-    note: clean.note,
     slots,
     updatedAt: new Date().toISOString(),
   };
 
-  await store.setJSON(participantKey(clean.eventId, clean.participantToken), participant);
-  return participant;
-}
-
-export function createHttpError(status, message) {
-  const error = new Error(message);
-  error.status = status;
-  return error;
+  await store.setJSON(participantKey(board.id, clean.participantToken), participant);
+  return { board, participant };
 }
 
 export function jsonResponse(body, status = 200) {
@@ -83,76 +47,19 @@ export function jsonResponse(body, status = 200) {
 
 export function errorResponse(error) {
   const status = Number(error?.status) || 500;
-  return jsonResponse(
-    {
-      error: error?.message || "Erreur serveur.",
-    },
-    status,
-  );
+  return jsonResponse({ error: error?.message || "Erreur serveur." }, status);
 }
 
-function validateEventPayload(payload) {
-  const title = String(payload?.title || "").trim();
-  const description = String(payload?.description || "").trim();
-  const startDate = String(payload?.startDate || "").trim();
-  const endDate = String(payload?.endDate || "").trim();
-  const dayStartHour = Number(payload?.dayStartHour);
-  const dayEndHour = Number(payload?.dayEndHour);
-  const stepMinutes = Number(payload?.stepMinutes);
-
-  if (!title) {
-    throw createHttpError(400, "Le titre est obligatoire.");
-  }
-
-  if (!isDateString(startDate) || !isDateString(endDate)) {
-    throw createHttpError(400, "Les dates sont invalides.");
-  }
-
-  const start = new Date(`${startDate}T00:00:00`);
-  const end = new Date(`${endDate}T00:00:00`);
-  const days = Math.floor((end - start) / 86400000) + 1;
-
-  if (end < start) {
-    throw createHttpError(400, "La date de fin doit être après la date de début.");
-  }
-
-  if (days > 45) {
-    throw createHttpError(400, "Pour le MVP, limite la plage à 45 jours maximum.");
-  }
-
-  if (!Number.isInteger(dayStartHour) || !Number.isInteger(dayEndHour)) {
-    throw createHttpError(400, "Les heures doivent être entières.");
-  }
-
-  if (dayStartHour < 0 || dayStartHour > 23 || dayEndHour < 1 || dayEndHour > 24 || dayEndHour <= dayStartHour) {
-    throw createHttpError(400, "Les heures définies sont invalides.");
-  }
-
-  if (![30, 60].includes(stepMinutes)) {
-    throw createHttpError(400, "Le pas doit être de 30 ou 60 minutes.");
-  }
-
-  return {
-    title: title.slice(0, 80),
-    description: description.slice(0, 240),
-    startDate,
-    endDate,
-    dayStartHour,
-    dayEndHour,
-    stepMinutes,
-  };
+export function createHttpError(status, message) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
 }
 
 function validateAvailabilityPayload(payload) {
-  const eventId = String(payload?.eventId || "").trim();
   const participantToken = String(payload?.participantToken || "").trim();
   const name = String(payload?.name || "").trim();
-  const note = String(payload?.note || "").trim();
   const slots = Array.isArray(payload?.slots) ? payload.slots.map((slot) => String(slot)) : [];
-
-  if (!eventId) {
-    throw createHttpError(400, "Événement manquant.");
-  }
 
   if (!participantToken) {
     throw createHttpError(400, "Identifiant participant manquant.");
@@ -162,52 +69,88 @@ function validateAvailabilityPayload(payload) {
     throw createHttpError(400, "Le nom est obligatoire.");
   }
 
-  if (slots.length > 2500) {
+  if (slots.length > 1000) {
     throw createHttpError(400, "Trop de créneaux envoyés.");
   }
 
   return {
-    eventId,
     participantToken,
     name: name.slice(0, 60),
-    note: note.slice(0, 120),
     slots: [...new Set(slots)],
   };
 }
 
-function eventKey(id) {
-  return `events/${id}`;
+async function listParticipantsByBoard(boardId) {
+  const { blobs } = await store.list({ prefix: participantPrefix(boardId) });
+  const participants = await Promise.all(
+    blobs.map((entry) => store.get(entry.key, { type: "json" })),
+  );
+
+  return participants
+    .filter(Boolean)
+    .map((participant) => ({
+      boardId: participant.boardId,
+      participantToken: participant.participantToken,
+      name: participant.name,
+      slots: Array.isArray(participant.slots) ? participant.slots : [],
+      updatedAt: participant.updatedAt,
+    }));
 }
 
-function participantPrefix(eventId) {
-  return `participants/${eventId}/`;
+function getCurrentBoard() {
+  const startDate = getParisDateString();
+  const endDate = addDays(startDate, BOARD_SETTINGS.days - 1);
+
+  return {
+    id: `rolling-14-${startDate}`,
+    title: BOARD_SETTINGS.title,
+    description: BOARD_SETTINGS.description,
+    startDate,
+    endDate,
+    dayStartHour: BOARD_SETTINGS.dayStartHour,
+    dayEndHour: BOARD_SETTINGS.dayEndHour,
+    stepMinutes: BOARD_SETTINGS.stepMinutes,
+    timezone: BOARD_SETTINGS.timezone,
+  };
 }
 
-function participantKey(eventId, participantToken) {
-  return `${participantPrefix(eventId)}${participantToken}`;
+function participantPrefix(boardId) {
+  return `participants/${boardId}/`;
 }
 
-function slugify(value) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+function participantKey(boardId, participantToken) {
+  return `${participantPrefix(boardId)}${participantToken}`;
 }
 
-function isDateString(value) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+function getParisDateString() {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: BOARD_SETTINGS.timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  const parts = formatter.formatToParts(new Date());
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(dateString, daysToAdd) {
+  const [year, month, day] = dateString.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + daysToAdd);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
 function getDatesInRange(startDate, endDate) {
   const results = [];
-  let cursor = new Date(`${startDate}T00:00:00`);
-  const end = new Date(`${endDate}T00:00:00`);
+  let cursor = startDate;
 
-  while (cursor <= end) {
-    results.push(toDateInputValue(cursor));
-    cursor.setDate(cursor.getDate() + 1);
+  while (cursor <= endDate) {
+    results.push(cursor);
+    cursor = addDays(cursor, 1);
   }
 
   return results;
@@ -221,15 +164,8 @@ function getTimeSlots(dayStartHour, dayEndHour, stepMinutes) {
   return slots;
 }
 
-function getAllSlotKeys(event) {
-  const dates = getDatesInRange(event.startDate, event.endDate);
-  const times = getTimeSlots(event.dayStartHour, event.dayEndHour, event.stepMinutes);
+function getAllSlotKeys(board) {
+  const dates = getDatesInRange(board.startDate, board.endDate);
+  const times = getTimeSlots(board.dayStartHour, board.dayEndHour, board.stepMinutes);
   return dates.flatMap((date) => times.map((time) => `${date}|${time}`));
-}
-
-function toDateInputValue(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
